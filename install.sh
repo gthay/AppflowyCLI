@@ -4,8 +4,23 @@ set -eu
 REPO_URL="${APPFLOWY_CLI_REPO_URL:-https://github.com/gthay/AppflowyCLI.git}"
 
 if ! command -v uv >/dev/null 2>&1; then
-  echo "uv is required to install appflowy-cli."
-  echo "Install uv first: https://docs.astral.sh/uv/getting-started/installation/"
+  echo "uv is not installed. Installing uv with Astral's official installer..."
+  if command -v curl >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- https://astral.sh/uv/install.sh | sh
+  else
+    echo "curl or wget is required to install uv."
+    echo "Install uv manually: https://docs.astral.sh/uv/getting-started/installation/"
+    exit 1
+  fi
+
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv was installed, but it is not available on PATH yet."
+  echo "Restart your shell, then rerun this installer."
   exit 1
 fi
 

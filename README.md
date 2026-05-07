@@ -9,8 +9,6 @@ Status: early open-source release. The CLI currently targets AppFlowy Cloud.
 
 ## Requirements
 
-- Python 3.10+
-- `uv`
 - An AppFlowy Cloud account
 
 ## Install
@@ -27,8 +25,8 @@ Or use the install script:
 curl -LsSf https://raw.githubusercontent.com/gthay/AppflowyCLI/main/install.sh | sh
 ```
 
-The install script requires `uv`. Install `uv` first if needed:
-https://docs.astral.sh/uv/getting-started/installation/
+The install script installs `uv` automatically if it is missing, using Astral's
+official installer.
 
 Update later with:
 
