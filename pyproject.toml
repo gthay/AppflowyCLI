@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "appflowy-cli"
+version = "0.1.0"
+description = "A Python CLI for AppFlowy pages and databases."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Tobias Gloeckler" },
+]
+keywords = ["appflowy", "cli", "tasks", "agents"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "pycrdt>=0.12.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "tomli>=2.0.0; python_version<'3.11'",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+appflowy = "appflowy_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/gthay/AppflowyCLI"
+Repository = "https://github.com/gthay/AppflowyCLI"
+Issues = "https://github.com/gthay/AppflowyCLI/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,7 @@
+interface:
+  display_name: "AppFlowy CLI"
+  short_description: "Manage AppFlowy tasks, pages, and databases"
+  default_prompt: "Use $appflowy-cli to inspect my AppFlowy task database and update tasks through the CLI."
+
+policy:
+  allow_implicit_invocation: true
