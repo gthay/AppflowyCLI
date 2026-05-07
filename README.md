@@ -1,5 +1,10 @@
 # AppFlowy CLI
 
+> **Disclaimer:** This project is not affiliated with, endorsed by, or
+> associated with AppFlowy or AppFlowy Inc. "AppFlowy" is a trademark of its
+> respective owner. This is an independent, third-party command-line client
+> that interacts with the AppFlowy Cloud API.
+
 A Python command-line client for AppFlowy Cloud pages and databases.
 
 The CLI is designed for direct terminal use and for AI agents that need a small,
