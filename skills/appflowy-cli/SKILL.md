@@ -52,6 +52,8 @@ Use semantic task commands after the profile is configured:
 ```bash
 ./appflowy task list --json
 ./appflowy task list --status "Todo" --json
+./appflowy task list --status "Todo" --status "In Progress" --summary --json
+./appflowy task list --exclude-status "Done" --exclude-status "Archived" --summary --json
 ./appflowy task create "Send invoice" --status "Todo" --priority "High"
 ./appflowy task move "Send invoice" "In review"
 ./appflowy task note "Send invoice" "Checked contract and invoice draft."
@@ -59,6 +61,13 @@ Use semantic task commands after the profile is configured:
 
 Use row IDs when task titles are ambiguous. Use `--fuzzy` only when a unique
 substring title match is acceptable.
+
+Use `--summary` for compact task body context. It returns only the leading
+H4 `Summary` section from each task body and stops at the next heading. Use
+`--summary-heading` when a database uses another heading, and
+`--summary-stop-heading` or repeated `--body-heading` when flattened AppFlowy
+row text needs explicit section boundaries. Tasks without the requested leading
+summary section omit the `summary` field.
 
 ## Pages And Raw Rows
 
@@ -74,6 +83,9 @@ For direct database operations:
 
 ```bash
 ./appflowy rows <database-id> --json
+./appflowy rows <database-id> --summary --json
+./appflowy rows <database-id> --status-field "Status" --exclude-status "Done" --exclude-status "Archived" --summary --json
+./appflowy rows <database-id> --summary --summary-heading "Brief" --summary-stop-heading "Notes" --json
 ./appflowy row-create <database-id> --cell "Title=Follow up"
 ./appflowy row-update <database-id> <row-id> --cell "Status=In review"
 ```

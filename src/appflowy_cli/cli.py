@@ -24,6 +24,7 @@ import argparse
 import sys
 import json
 import os
+import re
 from pathlib import Path
 from dotenv import dotenv_values
 from . import client as af
@@ -34,6 +35,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
     import tomli as tomllib
 
 CONFIG_FILE = os.getenv("APPFLOWY_CLI_CONFIG", ".appflowy-cli.toml")
+DEFAULT_BODY_HEADINGS = ("Description", "Notes", "Details", "Context", "Acceptance Criteria")
 TASK_FIELD_KEYS = {
     "title": "title_field",
     "status": "status_field",
@@ -168,6 +170,97 @@ def _find_task_row(rows, title, title_field, allow_fuzzy=False):
         raise af.AppFlowyError(f"Task query '{title}' is ambiguous; use a more specific title or row ID.")
     by_id = [r for r in rows if _row_id(r) == title]
     return by_id[0] if by_id else None
+
+
+def _extract_summary_section(markdown, heading="Summary"):
+    if not markdown:
+        return None
+    heading = heading.strip()
+    if not heading:
+        return None
+    markdown = markdown.lstrip()
+    if not markdown.startswith(f"#### {heading}"):
+        return None
+    lines = markdown.lstrip().splitlines()
+    if not lines or not re.fullmatch(rf"#{{4}}\s+{re.escape(heading)}\s*", lines[0]):
+        return None
+
+    summary_lines = []
+    for line in lines[1:]:
+        if re.match(r"#{1,6}\s+\S", line):
+            break
+        summary_lines.append(line)
+    return "\n".join(summary_lines).strip()
+
+
+def _extract_flattened_summary(text, heading="Summary", stop_headings=None):
+    if not text:
+        return None
+    heading = heading.strip()
+    if not heading or not text.startswith(heading):
+        return None
+    summary = text[len(heading):]
+    indexes = [
+        summary.find(stop_heading)
+        for stop_heading in stop_headings or ()
+        if stop_heading and summary.find(stop_heading) != -1
+    ]
+    if indexes:
+        summary = summary[:min(indexes)]
+    return summary.strip()
+
+
+def _summary_stop_headings(summary_heading="Summary", stop_heading=None, body_headings=None):
+    headings = []
+    if stop_heading:
+        headings.append(stop_heading)
+    for heading in body_headings or DEFAULT_BODY_HEADINGS:
+        if heading and heading != summary_heading and heading not in headings:
+            headings.append(heading)
+    return headings
+
+
+def _add_row_summaries(token, workspace_id, rows, summary_heading="Summary", stop_heading=None, body_headings=None):
+    stop_headings = _summary_stop_headings(summary_heading, stop_heading, body_headings)
+    summarized = []
+    for row in rows:
+        item = dict(row)
+        content = row.get("doc")
+        if "doc" in item:
+            item["doc"] = None
+        if content is None:
+            row_id = _row_id(row)
+            if row_id:
+                try:
+                    content = af.get_page_content(token, workspace_id, row_id)
+                except (KeyError, TypeError, ValueError):
+                    content = ""
+            else:
+                content = ""
+        summary = (
+            _extract_summary_section(content, summary_heading)
+            or _extract_flattened_summary(content, summary_heading, stop_headings)
+        )
+        if summary is not None:
+            item["summary"] = summary
+        summarized.append(item)
+    return summarized
+
+
+def _filter_rows_by_status(rows, status_field, statuses=None, exclude_statuses=None):
+    if not statuses and not exclude_statuses:
+        return rows
+    wanted = {status.casefold() for status in statuses or []}
+    excluded = {status.casefold() for status in exclude_statuses or []}
+    filtered = []
+    for row in rows:
+        status = _cell_text(row, status_field).casefold()
+        if wanted and status not in wanted:
+            continue
+        if excluded and status in excluded:
+            continue
+        filtered.append(row)
+    return filtered
 
 
 # ── Auth ──────────────────────────────────────────────────────────────
@@ -370,17 +463,32 @@ def cmd_rows(args):
         if not rows:
             print("No recently updated rows.")
             return
-        if args.json:
+        if args.json and not args.summary:
             print_json(rows)
             return
         row_ids = [r.get("row_id", r.get("id")) for r in rows]
-        details = af.get_database_row_details(token, ws, args.database_id, row_ids)
+        details = af.get_database_row_details(token, ws, args.database_id, row_ids, with_doc=args.summary)
     else:
-        details = af.get_database_row_details(token, ws, args.database_id)
+        details = af.get_database_row_details(token, ws, args.database_id, with_doc=args.summary)
 
     if not details:
         print("No rows found.")
         return
+
+    if args.status or args.exclude_status:
+        if not args.status_field:
+            raise af.AppFlowyError("Use --status-field when filtering rows by status.")
+        details = _filter_rows_by_status(details, args.status_field, args.status, args.exclude_status)
+
+    if args.summary:
+        details = _add_row_summaries(
+            token,
+            ws,
+            details,
+            summary_heading=args.summary_heading,
+            stop_heading=args.summary_stop_heading,
+            body_headings=args.body_heading,
+        )
 
     if args.json:
         print_json(details)
@@ -393,6 +501,8 @@ def cmd_rows(args):
             display = _format_cell(key, val)
             if display is not None:
                 parts.append(f"{key}: {display}")
+        if row.get("summary") is not None:
+            parts.append(f"summary: {row['summary']}")
         summary = " | ".join(parts) if parts else "(empty)"
         print(f"  [{row['id'][:8]}] {summary}")
 
@@ -467,11 +577,21 @@ def cmd_task_list(args):
     token = af.require_token()
     ws = get_ws()
     profile = _task_profile()
-    details = af.get_database_row_details(token, ws, profile["database"])
+    details = af.get_database_row_details(token, ws, profile["database"], with_doc=args.summary)
 
-    if args.status:
+    if args.status or args.exclude_status:
         status_field = _task_field(profile, "status", required=True)
-        details = [r for r in details if _cell_text(r, status_field).casefold() == args.status.casefold()]
+        details = _filter_rows_by_status(details, status_field, args.status, args.exclude_status)
+
+    if args.summary:
+        details = _add_row_summaries(
+            token,
+            ws,
+            details,
+            summary_heading=args.summary_heading,
+            stop_heading=args.summary_stop_heading,
+            body_headings=args.body_heading,
+        )
 
     if args.json:
         print_json(details)
@@ -490,6 +610,8 @@ def cmd_task_list(args):
             parts.append(f"priority: {_cell_text(row, priority_field)}")
         if due_field and _cell_text(row, due_field):
             parts.append(f"due: {_cell_text(row, due_field)}")
+        if row.get("summary") is not None:
+            parts.append(f"summary: {row['summary']}")
         print(f"  [{row_id[:8]}] " + " | ".join(parts))
 
 
@@ -594,6 +716,13 @@ def main():
     rows_p = sub.add_parser("rows", help="Show database rows")
     rows_p.add_argument("database_id", help="Database ID")
     rows_p.add_argument("--updated", action="store_true", help="Only show recently updated rows")
+    rows_p.add_argument("--status-field", help="Field containing the row status")
+    rows_p.add_argument("--status", action="append", help="Only include this status (repeatable)")
+    rows_p.add_argument("--exclude-status", action="append", help="Exclude this status (repeatable)")
+    rows_p.add_argument("--summary", action="store_true", help="Include Summary section from each row body")
+    rows_p.add_argument("--summary-heading", default="Summary", help="H4 heading to extract for --summary")
+    rows_p.add_argument("--summary-stop-heading", help="Heading that ends the flattened summary section")
+    rows_p.add_argument("--body-heading", action="append", help="Known body heading for flattened row docs (repeatable)")
     rows_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     rc_p = sub.add_parser("row-create", help="Create a database row")
@@ -623,7 +752,12 @@ def main():
     task_config_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     task_list_p = task_sub.add_parser("list", help="List tasks")
-    task_list_p.add_argument("--status", help="Filter by configured status field")
+    task_list_p.add_argument("--status", action="append", help="Filter by configured status field (repeatable)")
+    task_list_p.add_argument("--exclude-status", action="append", help="Exclude configured status values (repeatable)")
+    task_list_p.add_argument("--summary", action="store_true", help="Include Summary section from each task body")
+    task_list_p.add_argument("--summary-heading", default="Summary", help="H4 heading to extract for --summary")
+    task_list_p.add_argument("--summary-stop-heading", help="Heading that ends the flattened summary section")
+    task_list_p.add_argument("--body-heading", action="append", help="Known body heading for flattened row docs (repeatable)")
     task_list_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     task_create_p = task_sub.add_parser("create", help="Create a task")

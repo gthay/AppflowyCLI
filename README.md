@@ -45,6 +45,9 @@ appflowy append "Daily" "Finished the review"
 appflowy databases
 appflowy fields <database-id>
 appflowy rows <database-id>
+appflowy rows <database-id> --summary --json
+appflowy rows <database-id> --status-field "Status" --exclude-status "Done" --exclude-status "Archived" --summary --json
+appflowy rows <database-id> --summary --summary-heading "Brief" --summary-stop-heading "Notes" --json
 ```
 
 Use `--json` on list/read commands when calling the CLI from an agent.
@@ -60,6 +63,8 @@ appflowy task config \
   --status-field "Stage" \
   --notes-field "Body"
 appflowy task list --status "Todo"
+appflowy task list --status "Todo" --status "In Progress" --summary --json
+appflowy task list --exclude-status "Done" --exclude-status "Archived" --summary --json
 appflowy task create "Send invoice" --status "Todo"
 appflowy task move "Send invoice" "In review"
 appflowy task note "Send invoice" "Checked the contract."
@@ -67,6 +72,18 @@ appflowy task note "Send invoice" "Checked the contract."
 
 The task profile maps the user's real AppFlowy field names to stable CLI
 commands. It is saved to `.appflowy-cli.toml`.
+
+Status names in examples are user-defined values from the database. Use
+`--exclude-status` to keep terminal states such as `Done` or `Archived` out of
+agent context when those statuses exist in the user's database.
+
+Use `--summary` when an agent needs compact row body context. It fetches row
+body text when AppFlowy Cloud exposes it and returns only the leading H4 section
+named by `--summary-heading` (`Summary` by default). Markdown page bodies stop
+at the next heading. Flattened row bodies stop at `--summary-stop-heading` or at
+a known body heading such as `Description`, `Notes`, `Details`, `Context`, or
+`Acceptance Criteria`. Rows without the requested leading section omit
+`summary`.
 
 ## Configuration
 

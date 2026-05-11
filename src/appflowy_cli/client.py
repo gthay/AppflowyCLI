@@ -435,17 +435,20 @@ def get_database_rows_updated(token, workspace_id, database_id):
     return _unwrap_data(_check_api_result(data, "Get updated database rows"))
 
 
-def get_database_row_details(token, workspace_id, database_id, row_ids=None):
+def get_database_row_details(token, workspace_id, database_id, row_ids=None, with_doc=False):
     if row_ids is None:
         rows = get_database_rows(token, workspace_id, database_id)
         row_ids = [r["id"] for r in rows]
     if not row_ids:
         return []
+    params = {"ids": ",".join(row_ids)}
+    if with_doc:
+        params["with_doc"] = "true"
     resp = _request(
         "GET",
         f"/api/workspace/{workspace_id}/database/{database_id}/row/detail",
         token=token,
-        params={"ids": ",".join(row_ids)},
+        params=params,
     )
     data = _response_json(resp, "get database row details")
     return _unwrap_data(_check_api_result(data, "Get database row details"))

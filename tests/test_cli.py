@@ -108,3 +108,178 @@ def test_find_task_row_rejects_ambiguous_fuzzy_title():
         assert "ambiguous" in str(exc)
     else:
         raise AssertionError("Expected ambiguous task query")
+
+
+def test_extract_summary_section_stops_at_next_heading():
+    markdown = "#### Summary\nThis is summary\nwith details\n# Description\nLong body"
+
+    assert cli._extract_summary_section(markdown) == "This is summary\nwith details"
+
+
+def test_extract_summary_section_ignores_body_without_summary_heading():
+    markdown = "# Description\n#### Summary\nToo late"
+
+    assert cli._extract_summary_section(markdown) is None
+
+
+def test_extract_summary_section_requires_exact_summary_heading():
+    markdown = "#### Not Summary\nText\n# Description"
+
+    assert cli._extract_summary_section(markdown) is None
+
+
+def test_extract_summary_section_accepts_custom_heading():
+    markdown = "#### Brief\nShort version\n# Description\nLong body"
+
+    assert cli._extract_summary_section(markdown, heading="Brief") == "Short version"
+
+
+def test_extract_flattened_summary_stops_at_description_heading():
+    text = "SummaryShort versionDescriptionLong body"
+
+    assert cli._extract_flattened_summary(text, stop_headings=["Description"]) == "Short version"
+
+
+def test_extract_flattened_summary_stops_at_next_known_heading():
+    text = "SummaryShort versionNotesLong body"
+
+    assert cli._extract_flattened_summary(text, stop_headings=["Description", "Notes"]) == "Short version"
+
+
+def test_extract_flattened_summary_uses_custom_heading_and_stop_heading():
+    text = "BriefShort versionDetailsLong body"
+
+    assert cli._extract_flattened_summary(text, heading="Brief", stop_headings=["Details"]) == "Short version"
+
+
+def test_extract_flattened_summary_allows_missing_description_heading():
+    text = "SummaryShort version"
+
+    assert cli._extract_flattened_summary(text) == "Short version"
+
+
+def test_filter_rows_by_status_accepts_multiple_statuses():
+    rows = [
+        {"id": "row1", "cells": {"Stage": "Todo"}},
+        {"id": "row2", "cells": {"Stage": "In Progress"}},
+        {"id": "row3", "cells": {"Stage": "Done"}},
+    ]
+
+    assert cli._filter_rows_by_status(rows, "Stage", ["todo", "Done"]) == [rows[0], rows[2]]
+
+
+def test_filter_rows_by_status_excludes_multiple_statuses():
+    rows = [
+        {"id": "row1", "cells": {"Stage": "Todo"}},
+        {"id": "row2", "cells": {"Stage": "Archived"}},
+        {"id": "row3", "cells": {"Stage": "Done"}},
+    ]
+
+    assert cli._filter_rows_by_status(rows, "Stage", exclude_statuses=["archived", "Done"]) == [rows[0]]
+
+
+def test_filter_rows_by_status_combines_include_and_exclude():
+    rows = [
+        {"id": "row1", "cells": {"Stage": "Todo"}},
+        {"id": "row2", "cells": {"Stage": "Doing"}},
+        {"id": "row3", "cells": {"Stage": "Done"}},
+    ]
+
+    assert cli._filter_rows_by_status(
+        rows,
+        "Stage",
+        statuses=["Todo", "Doing", "Done"],
+        exclude_statuses=["done"],
+    ) == [rows[0], rows[1]]
+
+
+def test_add_row_summaries_omits_missing_summary(monkeypatch):
+    rows = [
+        {"id": "row1", "cells": {"Task": "Has summary"}},
+        {"id": "row2", "cells": {"Task": "No summary"}},
+    ]
+
+    def fake_get_page_content(token, workspace_id, row_id):
+        if row_id == "row1":
+            return "#### Summary\nShort version\n# Description\nLong body"
+        return "# Description\nLong body"
+
+    monkeypatch.setattr(cli.af, "get_page_content", fake_get_page_content)
+
+    assert cli._add_row_summaries("token", "ws", rows) == [
+        {"id": "row1", "cells": {"Task": "Has summary"}, "summary": "Short version"},
+        {"id": "row2", "cells": {"Task": "No summary"}},
+    ]
+
+
+def test_add_row_summaries_skips_undecodable_row_body(monkeypatch):
+    rows = [
+        {"id": "row1", "cells": {"Task": "Has summary"}},
+        {"id": "row2", "cells": {"Task": "Undecodable body"}},
+    ]
+
+    def fake_get_page_content(token, workspace_id, row_id):
+        if row_id == "row2":
+            raise KeyError("document")
+        return "#### Summary\nShort version"
+
+    monkeypatch.setattr(cli.af, "get_page_content", fake_get_page_content)
+
+    assert cli._add_row_summaries("token", "ws", rows) == [
+        {"id": "row1", "cells": {"Task": "Has summary"}, "summary": "Short version"},
+        {"id": "row2", "cells": {"Task": "Undecodable body"}},
+    ]
+
+
+def test_add_row_summaries_uses_row_detail_doc_before_collab(monkeypatch):
+    rows = [
+        {
+            "id": "row1",
+            "cells": {"Task": "Has flattened summary"},
+            "doc": "SummaryShort versionDescriptionLong body",
+        },
+    ]
+
+    def fail_get_page_content(token, workspace_id, row_id):
+        raise AssertionError("row detail doc should be used before fetching collab")
+
+    monkeypatch.setattr(cli.af, "get_page_content", fail_get_page_content)
+
+    assert cli._add_row_summaries("token", "ws", rows) == [
+        {
+            "id": "row1",
+            "cells": {"Task": "Has flattened summary"},
+            "doc": None,
+            "summary": "Short version",
+        },
+    ]
+
+
+def test_add_row_summaries_accepts_custom_summary_heading(monkeypatch):
+    rows = [
+        {
+            "id": "row1",
+            "cells": {"Task": "Has custom summary"},
+            "doc": "BriefShort versionDetailsLong body",
+        },
+    ]
+
+    def fail_get_page_content(token, workspace_id, row_id):
+        raise AssertionError("row detail doc should be used before fetching collab")
+
+    monkeypatch.setattr(cli.af, "get_page_content", fail_get_page_content)
+
+    assert cli._add_row_summaries(
+        "token",
+        "ws",
+        rows,
+        summary_heading="Brief",
+        stop_heading="Details",
+    ) == [
+        {
+            "id": "row1",
+            "cells": {"Task": "Has custom summary"},
+            "doc": None,
+            "summary": "Short version",
+        },
+    ]
