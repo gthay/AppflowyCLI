@@ -82,12 +82,14 @@ def test_task_cells_use_configured_field_names():
         notes = "Draft exists"
         due = None
         priority = "High"
+        project = "Website"
 
     profile = {
         "title_field": "Task",
         "status_field": "Stage",
         "notes_field": "Body",
         "priority_field": "Importance",
+        "project_field": "Project",
     }
 
     assert cli._task_cells_from_args(Args, profile) == {
@@ -95,6 +97,7 @@ def test_task_cells_use_configured_field_names():
         "Stage": "Todo",
         "Body": "Draft exists",
         "Importance": "High",
+        "Project": "Website",
     }
 
 
@@ -234,6 +237,58 @@ def test_coerce_database_cells_maps_datetime_field_to_timestamp_payload(monkeypa
             "end_timestamp": "",
             "reminder_id": "",
         },
+    }
+
+
+def test_coerce_database_cells_resolves_relation_name_to_row_id(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        if database_id == "tasks":
+            return [
+                {
+                    "name": "Project",
+                    "id": "project-field-id",
+                    "field_type": "Relation",
+                    "field_type_id": 10,
+                    "type_option": {"database_id": "projects"},
+                },
+            ]
+        return [{"name": "Name", "id": "project-name-id", "field_type": "RichText", "is_primary": True}]
+
+    def fake_get_database_row_details(token, workspace_id, database_id, row_ids=None, with_doc=False):
+        assert database_id == "projects"
+        return [{"id": "project-row-id", "cells": {"Name": "Website"}}]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+    monkeypatch.setattr(cli.af, "get_database_row_details", fake_get_database_row_details)
+
+    assert cli._coerce_database_cells("token", "ws", "tasks", {"Project": "Website"}) == {
+        "project-field-id": ["project-row-id"],
+    }
+
+
+def test_coerce_database_cells_accepts_relation_row_id(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        if database_id == "tasks":
+            return [
+                {
+                    "name": "Project",
+                    "id": "project-field-id",
+                    "field_type": "Relation",
+                    "field_type_id": 10,
+                    "type_option": {"database_id": "projects"},
+                },
+            ]
+        return [{"name": "Name", "id": "project-name-id", "field_type": "RichText", "is_primary": True}]
+
+    def fake_get_database_row_details(token, workspace_id, database_id, row_ids=None, with_doc=False):
+        assert database_id == "projects"
+        return [{"id": "project-row-id", "cells": {"Name": "Website"}}]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+    monkeypatch.setattr(cli.af, "get_database_row_details", fake_get_database_row_details)
+
+    assert cli._coerce_database_cells("token", "ws", "tasks", {"Project": "project-row-id"}) == {
+        "project-field-id": ["project-row-id"],
     }
 
 

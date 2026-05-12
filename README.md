@@ -61,12 +61,14 @@ appflowy task config \
   --database <database-id> \
   --title-field "Task" \
   --status-field "Stage" \
-  --notes-field "Body"
+  --notes-field "Body" \
+  --project-field "Project"
 appflowy task list --status "Todo"
 appflowy task list --status "Todo" --status "In Progress" --summary --json
 appflowy task list --exclude-status "Done" --exclude-status "Archived" --summary --json
 appflowy task create "Send invoice" --status "Todo"
 appflowy task create "Send invoice" --status "Todo" --summary-text "Agent-facing task context"
+appflowy task create "Send invoice" --project "Website"
 appflowy task move "Send invoice" "In review"
 appflowy task note "Send invoice" "Checked the contract."
 ```
@@ -96,6 +98,10 @@ a known body heading such as `Description`, `Notes`, `Details`, `Context`, or
 Use `task create --summary-text` to initialize that leading Summary section for
 agent-facing task details. Add `--description-text` for a following Description
 section, or `--document` to provide the full row body yourself.
+
+Configure `--project-field` to link tasks to a related projects database. Then
+use `task create --project "<project name or row ID>"`; project names are
+resolved against the relation target database.
 
 ## Configuration
 

@@ -38,7 +38,8 @@ ensure `APPFLOWY_WORKSPACE_ID` is set.
   --status-field "<status field>" \
   --notes-field "<notes field>" \
   --due-field "<due field>" \
-  --priority-field "<priority field>"
+  --priority-field "<priority field>" \
+  --project-field "<project relation field>"
 ```
 
 Only include optional fields that exist. The profile is saved to
@@ -56,6 +57,7 @@ Use semantic task commands after the profile is configured:
 ./appflowy task list --exclude-status "Done" --exclude-status "Archived" --summary --json
 ./appflowy task create "Send invoice" --status "Todo" --priority "High"
 ./appflowy task create "Send invoice" --status "Todo" --summary-text "Agent-facing task context"
+./appflowy task create "Send invoice" --project "Website"
 ./appflowy task move "Send invoice" "In review"
 ./appflowy task note "Send invoice" "Checked contract and invoice draft."
 ```
@@ -80,6 +82,10 @@ summary section omit the `summary` field.
 Use `task create --summary-text` to initialize that Summary section for
 agent-facing task details. Add `--description-text` for a following Description
 section, or `--document` to provide the full row body yourself.
+
+If the task database has a project relation field, configure it with
+`--project-field`, then pass `--project "<project name or row ID>"`. The CLI
+resolves project names against the relation target database.
 
 ## Pages And Raw Rows
 

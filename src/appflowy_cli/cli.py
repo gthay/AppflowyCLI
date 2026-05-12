@@ -43,6 +43,7 @@ TASK_FIELD_KEYS = {
     "notes": "notes_field",
     "due": "due_field",
     "priority": "priority_field",
+    "project": "project_field",
 }
 ENV_CONFIG_KEYS = (
     "APPFLOWY_BASE_URL",
@@ -84,7 +85,7 @@ def _save_task_profile(profile):
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["[tasks]"]
-    for key in ("database", "title_field", "status_field", "notes_field", "due_field", "priority_field"):
+    for key in ("database", "title_field", "status_field", "notes_field", "due_field", "priority_field", "project_field"):
         value = profile.get(key)
         if value:
             lines.append(f"{key} = {_toml_string(value)}")
@@ -131,7 +132,7 @@ def _task_field(profile, semantic, required=False):
 
 def _task_cells_from_args(args, profile, include_empty=False):
     cells = {}
-    for semantic in ("title", "status", "notes", "due", "priority"):
+    for semantic in ("title", "status", "notes", "due", "priority", "project"):
         value = getattr(args, semantic, None)
         field = _task_field(profile, semantic)
         if field and (include_empty or value not in (None, "")):
@@ -472,6 +473,32 @@ def _parse_datetime_cell(value):
     }
 
 
+def _primary_field_name(fields):
+    primary = next((field for field in fields if field.get("is_primary")), None)
+    return primary.get("name") if primary else "Name"
+
+
+def _resolve_relation_value(token, workspace_id, field, value):
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return value
+    target_database = (field.get("type_option") or {}).get("database_id")
+    if not target_database:
+        return value
+    rows = af.get_database_row_details(token, workspace_id, target_database)
+    if any(_row_id(row) == value for row in rows):
+        return [value]
+    target_fields = af.get_database_fields(token, workspace_id, target_database)
+    title_field = _primary_field_name(target_fields)
+    matches = [row for row in rows if _cell_text(row, title_field).casefold() == value.casefold()]
+    if len(matches) == 1:
+        return [_row_id(matches[0])]
+    if len(matches) > 1:
+        raise af.AppFlowyError(f"Relation value '{value}' is ambiguous for {field.get('name')}; use a row ID.")
+    raise af.AppFlowyError(f"Relation target not found for {field.get('name')}: {value!r}")
+
+
 def _coerce_database_cells(token, workspace_id, database_id, cells, for_update=False):
     if not cells:
         return cells
@@ -484,6 +511,9 @@ def _coerce_database_cells(token, workspace_id, database_id, cells, for_update=F
         output_key = field.get("id") if field and field.get("id") else key
         if field and field.get("field_type") == "DateTime" and value not in (None, "") and for_update:
             coerced[output_key] = _parse_datetime_cell(value)
+            continue
+        if field and field.get("field_type") == "Relation" and value not in (None, ""):
+            coerced[output_key] = _resolve_relation_value(token, workspace_id, field, value)
             continue
         if not field or field.get("field_type") != "SingleSelect" or value in (None, ""):
             coerced[output_key] = value
@@ -502,6 +532,12 @@ def _coerce_database_cells(token, workspace_id, database_id, cells, for_update=F
 def _database_field_types(token, workspace_id, database_id):
     fields = af.get_database_fields(token, workspace_id, database_id)
     return {field["id"]: field.get("field_type_id") for field in fields if field.get("id")}
+
+
+def _relation_cells(token, workspace_id, database_id, cells):
+    fields = af.get_database_fields(token, workspace_id, database_id)
+    relation_ids = {field["id"] for field in fields if field.get("id") and field.get("field_type") == "Relation"}
+    return {field_id: value for field_id, value in cells.items() if field_id in relation_ids}
 
 
 def _format_cell(key, val):
@@ -617,10 +653,13 @@ def cmd_row_create(args):
     cells = _parse_cells(args.cell)
     cells = _coerce_database_cells(token, ws, args.database_id, cells)
     result = af.create_database_row(token, ws, args.database_id, cells, document=args.document)
+    row_id = result.get("data", "")
+    relation_cells = _relation_cells(token, ws, args.database_id, cells)
+    if row_id and relation_cells:
+        af.update_database_row_cells(token, ws, row_id, relation_cells, _database_field_types(token, ws, args.database_id))
     if args.json:
         print_json(result)
     else:
-        row_id = result.get("data", "")
         print(f"Row created: {row_id}")
 
 
@@ -648,6 +687,7 @@ def cmd_task_config(args):
         "notes_field": args.notes_field,
         "due_field": args.due_field,
         "priority_field": args.priority_field,
+        "project_field": args.project_field,
     }
     for key, value in updates.items():
         if value is not None:
@@ -711,6 +751,10 @@ def cmd_task_create(args):
     cells[title_field] = args.title
     cells = _coerce_database_cells(token, ws, profile["database"], cells)
     result = af.create_database_row(token, ws, profile["database"], cells, document=_task_document_from_args(args))
+    row_id = result.get("data", "")
+    relation_cells = _relation_cells(token, ws, profile["database"], cells)
+    if row_id and relation_cells:
+        af.update_database_row_cells(token, ws, row_id, relation_cells, _database_field_types(token, ws, profile["database"]))
     if args.json:
         print_json(result)
     else:
@@ -839,6 +883,7 @@ def main():
     task_config_p.add_argument("--notes-field", help="Field containing task notes")
     task_config_p.add_argument("--due-field", help="Field containing the due date")
     task_config_p.add_argument("--priority-field", help="Field containing the priority")
+    task_config_p.add_argument("--project-field", help="Relation field linking tasks to projects")
     task_config_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     task_list_p = task_sub.add_parser("list", help="List tasks")
@@ -856,6 +901,7 @@ def main():
     task_create_p.add_argument("--notes", help="Initial notes")
     task_create_p.add_argument("--due", help="Due date")
     task_create_p.add_argument("--priority", help="Priority")
+    task_create_p.add_argument("--project", help="Project name or row ID for the configured project relation")
     task_create_p.add_argument("--summary-text", help="Initial text for a leading H4 Summary section")
     task_create_p.add_argument("--description-text", help="Initial text for a following H1 Description section")
     task_create_p.add_argument("--document", help="Initial task body document text")
