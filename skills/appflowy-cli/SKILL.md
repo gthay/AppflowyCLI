@@ -66,6 +66,9 @@ For single-select fields such as status or priority, pass the visible option
 name, for example `--status "Todo"` or `--priority "High"`. The CLI maps option
 names to AppFlowy option IDs before writing.
 
+For date fields such as due dates, pass `YYYY-MM-DD` or an ISO datetime, for
+example `--due "2026-05-13"` or `--cell "Deadline=2026-05-15T09:30:00+07:00"`.
+
 Use `--summary` for compact task body context. It returns only the leading
 H4 `Summary` section from each task body and stops at the next heading. Use
 `--summary-heading` when a database uses another heading, and

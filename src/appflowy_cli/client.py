@@ -494,11 +494,19 @@ def update_database_row_cells(token, workspace_id, row_id, cells, field_types):
         created_at = now
         if isinstance(existing, pycrdt.Map) and "created_at" in existing:
             created_at = existing["created_at"]
-        row_cells[field_id] = {
-            "data": value,
-            "field_type": field_type,
-            "created_at": created_at,
-            "last_modified": now,
-        }
+        if isinstance(value, dict):
+            cell_data = dict(value)
+            cell_data.setdefault("field_type", field_type)
+            cell_data.setdefault("created_at", created_at)
+            cell_data["last_modified"] = now
+        else:
+            cell_data = {
+                "data": value,
+                "field_type": field_type,
+                "created_at": created_at,
+                "last_modified": now,
+            }
+        cell = pycrdt.Map(cell_data)
+        row_cells[field_id] = cell
     row_data["last_modified"] = now
     return _put_collab(token, workspace_id, row_id, _encode_collab(doc), collab_type=1)

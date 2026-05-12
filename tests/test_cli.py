@@ -155,6 +155,46 @@ def test_coerce_database_cells_rejects_unknown_single_select_names(monkeypatch):
         raise AssertionError("Expected invalid single select option")
 
 
+def test_coerce_database_cells_maps_date_field_to_timestamp_payload(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        return [
+            {"name": "Deadline", "id": "deadline-field-id", "field_type": "DateTime", "field_type_id": 2},
+        ]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+
+    assert cli._coerce_database_cells("token", "ws", "db", {"Deadline": "2026-05-13"}) == {
+        "deadline-field-id": {
+            "data": "1778630400",
+            "field_type": 2,
+            "is_range": False,
+            "include_time": False,
+            "end_timestamp": "",
+            "reminder_id": "",
+        },
+    }
+
+
+def test_coerce_database_cells_maps_datetime_field_to_timestamp_payload(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        return [
+            {"name": "Deadline", "id": "deadline-field-id", "field_type": "DateTime", "field_type_id": 2},
+        ]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+
+    assert cli._coerce_database_cells("token", "ws", "db", {"Deadline": "2026-05-15T09:30:00+07:00"}) == {
+        "deadline-field-id": {
+            "data": "1778812200",
+            "field_type": 2,
+            "is_range": False,
+            "include_time": True,
+            "end_timestamp": "",
+            "reminder_id": "",
+        },
+    }
+
+
 def test_find_task_row_prefers_exact_title():
     rows = [
         {"id": "row1", "cells": {"Task": "Send invoice"}},

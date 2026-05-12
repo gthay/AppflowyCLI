@@ -25,6 +25,7 @@ import sys
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import dotenv_values
 from . import client as af
@@ -443,6 +444,34 @@ def _field_option_maps(field):
     return by_name, ids
 
 
+def _parse_datetime_cell(value):
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return value
+    raw = value.strip()
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+            dt = datetime.fromisoformat(normalized).replace(tzinfo=timezone.utc)
+            include_time = False
+        else:
+            dt = datetime.fromisoformat(normalized)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            include_time = True
+    except ValueError as exc:
+        raise af.AppFlowyError(f"Invalid date/datetime value: {value!r}. Use YYYY-MM-DD or ISO datetime.") from exc
+    return {
+        "data": str(int(dt.timestamp())),
+        "field_type": 2,
+        "is_range": False,
+        "include_time": include_time,
+        "end_timestamp": "",
+        "reminder_id": "",
+    }
+
+
 def _coerce_database_cells(token, workspace_id, database_id, cells):
     if not cells:
         return cells
@@ -453,6 +482,9 @@ def _coerce_database_cells(token, workspace_id, database_id, cells):
     for key, value in cells.items():
         field = fields_by_name.get(key) or fields_by_id.get(key)
         output_key = field.get("id") if field and field.get("id") else key
+        if field and field.get("field_type") == "DateTime" and value not in (None, ""):
+            coerced[output_key] = _parse_datetime_cell(value)
+            continue
         if not field or field.get("field_type") != "SingleSelect" or value in (None, ""):
             coerced[output_key] = value
             continue

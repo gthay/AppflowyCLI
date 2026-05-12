@@ -81,6 +81,9 @@ For single-select fields such as status or priority, pass the visible option
 name, for example `--status "Todo"` or `--priority "High"`. The CLI maps option
 names to AppFlowy option IDs before writing.
 
+For date fields such as due dates, pass `YYYY-MM-DD` or an ISO datetime, for
+example `--due "2026-05-13"` or `--cell "Deadline=2026-05-15T09:30:00+07:00"`.
+
 Use `--summary` when an agent needs compact row body context. It fetches row
 body text when AppFlowy Cloud exposes it and returns only the leading H4 section
 named by `--summary-heading` (`Summary` by default). Markdown page bodies stop
