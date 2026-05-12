@@ -155,7 +155,7 @@ def test_coerce_database_cells_rejects_unknown_single_select_names(monkeypatch):
         raise AssertionError("Expected invalid single select option")
 
 
-def test_coerce_database_cells_maps_date_field_to_timestamp_payload(monkeypatch):
+def test_coerce_database_cells_keeps_date_field_string_for_creates(monkeypatch):
     def fake_get_database_fields(token, workspace_id, database_id):
         return [
             {"name": "Deadline", "id": "deadline-field-id", "field_type": "DateTime", "field_type_id": 2},
@@ -164,6 +164,19 @@ def test_coerce_database_cells_maps_date_field_to_timestamp_payload(monkeypatch)
     monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
 
     assert cli._coerce_database_cells("token", "ws", "db", {"Deadline": "2026-05-13"}) == {
+        "deadline-field-id": "2026-05-13",
+    }
+
+
+def test_coerce_database_cells_maps_date_field_to_timestamp_payload_for_updates(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        return [
+            {"name": "Deadline", "id": "deadline-field-id", "field_type": "DateTime", "field_type_id": 2},
+        ]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+
+    assert cli._coerce_database_cells("token", "ws", "db", {"Deadline": "2026-05-13"}, for_update=True) == {
         "deadline-field-id": {
             "data": "1778630400",
             "field_type": 2,
@@ -183,7 +196,13 @@ def test_coerce_database_cells_maps_datetime_field_to_timestamp_payload(monkeypa
 
     monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
 
-    assert cli._coerce_database_cells("token", "ws", "db", {"Deadline": "2026-05-15T09:30:00+07:00"}) == {
+    assert cli._coerce_database_cells(
+        "token",
+        "ws",
+        "db",
+        {"Deadline": "2026-05-15T09:30:00+07:00"},
+        for_update=True,
+    ) == {
         "deadline-field-id": {
             "data": "1778812200",
             "field_type": 2,

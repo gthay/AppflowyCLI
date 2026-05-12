@@ -472,7 +472,7 @@ def _parse_datetime_cell(value):
     }
 
 
-def _coerce_database_cells(token, workspace_id, database_id, cells):
+def _coerce_database_cells(token, workspace_id, database_id, cells, for_update=False):
     if not cells:
         return cells
     fields = af.get_database_fields(token, workspace_id, database_id)
@@ -482,7 +482,7 @@ def _coerce_database_cells(token, workspace_id, database_id, cells):
     for key, value in cells.items():
         field = fields_by_name.get(key) or fields_by_id.get(key)
         output_key = field.get("id") if field and field.get("id") else key
-        if field and field.get("field_type") == "DateTime" and value not in (None, ""):
+        if field and field.get("field_type") == "DateTime" and value not in (None, "") and for_update:
             coerced[output_key] = _parse_datetime_cell(value)
             continue
         if not field or field.get("field_type") != "SingleSelect" or value in (None, ""):
@@ -614,7 +614,7 @@ def cmd_row_update(args):
     token = af.require_token()
     ws = get_ws()
     cells = _parse_cells(args.cell)
-    cells = _coerce_database_cells(token, ws, args.database_id, cells)
+    cells = _coerce_database_cells(token, ws, args.database_id, cells, for_update=True)
     result = af.update_database_row_cells(token, ws, args.row_id, cells, _database_field_types(token, ws, args.database_id))
     if args.json:
         print_json(result)
@@ -719,7 +719,7 @@ def cmd_task_move(args):
     status_field = _task_field(profile, "status", required=True)
     row = _load_task_for_update(token, ws, profile, args.task, allow_fuzzy=args.fuzzy)
     row_id = _row_id(row)
-    cells = _coerce_database_cells(token, ws, profile["database"], {status_field: args.status})
+    cells = _coerce_database_cells(token, ws, profile["database"], {status_field: args.status}, for_update=True)
     result = af.update_database_row_cells(token, ws, row_id, cells, _database_field_types(token, ws, profile["database"]))
     if args.json:
         print_json(result)
@@ -736,7 +736,7 @@ def cmd_task_note(args):
     row_id = _row_id(row)
     existing = _cell_text(row, notes_field)
     note = args.note if not existing else f"{existing}\n{args.note}"
-    cells = _coerce_database_cells(token, ws, profile["database"], {notes_field: note})
+    cells = _coerce_database_cells(token, ws, profile["database"], {notes_field: note}, for_update=True)
     result = af.update_database_row_cells(token, ws, row_id, cells, _database_field_types(token, ws, profile["database"]))
     if args.json:
         print_json(result)
