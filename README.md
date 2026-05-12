@@ -77,6 +77,10 @@ Status names in examples are user-defined values from the database. Use
 `--exclude-status` to keep terminal states such as `Done` or `Archived` out of
 agent context when those statuses exist in the user's database.
 
+For single-select fields such as status or priority, pass the visible option
+name, for example `--status "Todo"` or `--priority "High"`. The CLI maps option
+names to AppFlowy option IDs before writing.
+
 Use `--summary` when an agent needs compact row body context. It fetches row
 body text when AppFlowy Cloud exposes it and returns only the leading H4 section
 named by `--summary-heading` (`Summary` by default). Markdown page bodies stop

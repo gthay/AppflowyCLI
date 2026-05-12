@@ -75,6 +75,68 @@ def test_task_cells_use_configured_field_names():
     }
 
 
+def test_coerce_database_cells_maps_single_select_names_to_ids(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        return [
+            {
+                "name": "Priority",
+                "field_type": "SingleSelect",
+                "type_option": {
+                    "content": {
+                        "options": [
+                            {"id": "high-id", "name": "High"},
+                            {"id": "low-id", "name": "Low"},
+                        ]
+                    }
+                },
+            },
+            {"name": "Name", "field_type": "RichText", "type_option": {}},
+        ]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+
+    assert cli._coerce_database_cells("token", "ws", "db", {"Name": "Task", "Priority": "High"}) == {
+        "Name": "Task",
+        "Priority": "high-id",
+    }
+
+
+def test_coerce_database_cells_accepts_single_select_ids(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        return [
+            {
+                "name": "Priority",
+                "field_type": "SingleSelect",
+                "type_option": {"content": {"options": [{"id": "high-id", "name": "High"}]}},
+            },
+        ]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+
+    assert cli._coerce_database_cells("token", "ws", "db", {"Priority": "high-id"}) == {"Priority": "high-id"}
+
+
+def test_coerce_database_cells_rejects_unknown_single_select_names(monkeypatch):
+    def fake_get_database_fields(token, workspace_id, database_id):
+        return [
+            {
+                "name": "Priority",
+                "field_type": "SingleSelect",
+                "type_option": {"content": {"options": [{"id": "high-id", "name": "High"}]}},
+            },
+        ]
+
+    monkeypatch.setattr(cli.af, "get_database_fields", fake_get_database_fields)
+
+    try:
+        cli._coerce_database_cells("token", "ws", "db", {"Priority": "Urgent"})
+    except af.AppFlowyError as exc:
+        assert "Invalid option for Priority" in str(exc)
+        assert "High" in str(exc)
+    else:
+        raise AssertionError("Expected invalid single select option")
+
+
 def test_find_task_row_prefers_exact_title():
     rows = [
         {"id": "row1", "cells": {"Task": "Send invoice"}},

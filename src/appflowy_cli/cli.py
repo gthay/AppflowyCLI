@@ -434,6 +434,35 @@ def _get_field_options(field):
     return [o["name"] for o in options]
 
 
+def _field_option_maps(field):
+    to = field.get("type_option", {})
+    content = to.get("content") if isinstance(to, dict) else None
+    options = content.get("options", []) if isinstance(content, dict) else []
+    by_name = {o["name"].casefold(): o["id"] for o in options if o.get("name") and o.get("id")}
+    ids = {o["id"] for o in options if o.get("id")}
+    return by_name, ids
+
+
+def _coerce_database_cells(token, workspace_id, database_id, cells):
+    if not cells:
+        return cells
+    fields = af.get_database_fields(token, workspace_id, database_id)
+    fields_by_name = {field.get("name"): field for field in fields}
+    coerced = dict(cells)
+    for name, value in cells.items():
+        field = fields_by_name.get(name)
+        if not field or field.get("field_type") != "SingleSelect" or value in (None, ""):
+            continue
+        by_name, ids = _field_option_maps(field)
+        if isinstance(value, str) and value in ids:
+            continue
+        if not isinstance(value, str) or value.casefold() not in by_name:
+            options = ", ".join(_get_field_options(field))
+            raise af.AppFlowyError(f"Invalid option for {name}: {value!r}. Expected one of: {options}")
+        coerced[name] = by_name[value.casefold()]
+    return coerced
+
+
 def _format_cell(key, val):
     if val is None:
         return None
@@ -531,6 +560,7 @@ def cmd_row_create(args):
     token = af.require_token()
     ws = get_ws()
     cells = _parse_cells(args.cell)
+    cells = _coerce_database_cells(token, ws, args.database_id, cells)
     result = af.create_database_row(token, ws, args.database_id, cells)
     if args.json:
         print_json(result)
@@ -543,6 +573,7 @@ def cmd_row_update(args):
     token = af.require_token()
     ws = get_ws()
     cells = _parse_cells(args.cell)
+    cells = _coerce_database_cells(token, ws, args.database_id, cells)
     result = af.upsert_database_row(token, ws, args.database_id, args.row_id, cells, pre_hash=args.pre_hash)
     if args.json:
         print_json(result)
@@ -623,6 +654,7 @@ def cmd_task_create(args):
     cells = _task_cells_from_args(args, profile)
     title_field = _task_field(profile, "title", required=True)
     cells[title_field] = args.title
+    cells = _coerce_database_cells(token, ws, profile["database"], cells)
     result = af.create_database_row(token, ws, profile["database"], cells)
     if args.json:
         print_json(result)
@@ -646,7 +678,8 @@ def cmd_task_move(args):
     status_field = _task_field(profile, "status", required=True)
     row = _load_task_for_update(token, ws, profile, args.task, allow_fuzzy=args.fuzzy)
     row_id = _row_id(row)
-    result = af.upsert_database_row(token, ws, profile["database"], row_id, {status_field: args.status})
+    cells = _coerce_database_cells(token, ws, profile["database"], {status_field: args.status})
+    result = af.upsert_database_row(token, ws, profile["database"], row_id, cells)
     if args.json:
         print_json(result)
     else:
@@ -662,7 +695,8 @@ def cmd_task_note(args):
     row_id = _row_id(row)
     existing = _cell_text(row, notes_field)
     note = args.note if not existing else f"{existing}\n{args.note}"
-    result = af.upsert_database_row(token, ws, profile["database"], row_id, {notes_field: note})
+    cells = _coerce_database_cells(token, ws, profile["database"], {notes_field: note})
+    result = af.upsert_database_row(token, ws, profile["database"], row_id, cells)
     if args.json:
         print_json(result)
     else:
